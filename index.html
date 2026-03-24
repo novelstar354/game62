@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>フルーツゲーム change</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<link rel="icon" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRY09l5bMYBB4Zd7Wya1AmFH8VcuceAiuynVw&s" sizes="16×16" type="image/png" /> 
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+
+<style>
+/*body{
+ margin:0;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ min-height:100svh;
+ background:#0f172a;
+ font-family:system-ui;
+touch-action: none;
+overflow: hidden;
+touch-action: none;
+overflow: hidden;
+
+
+}*/
+body{
+ margin:0;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ min-height:100svh;
+
+ background:
+ radial-gradient(circle at 20% 20%, #1e293b, #020617),
+ radial-gradient(circle at 80% 80%, #0ea5e9, transparent);
+
+ font-family:system-ui;
+ overflow:hidden;
+}
+#wrap{
+ background:rgba(255,255,255,0.08);
+ backdrop-filter: blur(18px);
+ -webkit-backdrop-filter: blur(18px);
+
+ border-radius:20px;
+ padding:12px;
+ position:relative;
+
+ box-shadow:
+ 0 10px 40px rgba(0,0,0,0.5),
+ inset 0 0 20px rgba(255,255,255,0.05);
+}
+#ui{
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+ margin-bottom:8px;
+ font-weight:bold;
+ font-size:14px;
+ color:#fff;
+}
+
+.badge{
+ background:linear-gradient(135deg,#f59e0b,#f97316);
+ color:#fff;
+ padding:4px 10px;
+ border-radius:999px;
+ box-shadow:0 0 10px rgba(255,165,0,0.7);
+}
+#right{
+ display:flex;
+ gap:6px;
+ align-items:center;
+}
+
+#resetBtn{
+ border:none;
+ background:#fecaca;
+ border-radius:999px;
+ padding:4px 8px;
+ cursor:pointer;
+ font-size:14px;
+}
+canvas{
+ width:360px;
+ height:520px;
+ border-radius:14px;
+
+ background:linear-gradient(#fef3c7,#fde68a);
+
+ box-shadow:
+ 0 20px 40px rgba(0,0,0,0.4),
+ inset 0 0 20px rgba(255,255,255,0.4);
+}
+#guide{
+ position:absolute;
+ top:58px;
+ width:2px;
+ height:460px;
+
+ background:linear-gradient(to bottom, #ef4444, transparent);
+ box-shadow:0 0 12px #ef4444;
+
+ pointer-events:none;
+}
+.over{
+ position:absolute;
+ inset:0;
+
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ justify-content:center;
+ gap:16px;
+
+ font-size:32px;
+ font-weight:bold;
+ color:#fff;
+
+ background:rgba(0,0,0,0.7);
+ backdrop-filter: blur(6px);
+
+ animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn{
+ from{opacity:0; transform:scale(0.9);}
+ to{opacity:1; transform:scale(1);}
+}
+.hint{
+ text-align:center;
+ font-size:11px;
+ color:#64748b;
+ margin-top:4px;
+}
+#restartBtn{
+  font-size:18px;
+  padding:8px 18px;
+  border:none;
+  border-radius:999px;
+  background:#22c55e;
+  color:white;
+  cursor:pointer;
+}
+#restartBtn:hover{
+  background:#16a34a;
+}
+button{
+ transition:all .2s ease;
+}
+
+button:hover{
+ transform:scale(1.08);
+ filter:brightness(1.1);
+}
+
+button:active{
+ transform:scale(0.95);
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+ <div id="ui">
+     <div style="margin:6px 0; font-size:12px;">
+  種類数:
+  <input id="fruitCount" type="number" min="3" max="15" value="10" style="width:50px;">
+  <button id="applyBtn">適用</button>
+</div>
+
+<div id="fruitEditor" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+ <div>
+ <div style="font-size:18px;">Score</div>
+ <div style="font-size:26px; color:#22c55e;" id="score">0</div>
+
+ <div style="font-size:12px;">High</div>
+ <div style="font-size:18px;" id="high">0</div>
+
+ <div style="font-size:12px;">Suika</div>
+ <div style="font-size:18px;" id="suikaCount">0</div>
+</div>
+  <div id="right">
+   <div class="badge">🎮 <span id="current">🍒</span></div>
+   <div class="badge">➡ <span id="next">🍓</span></div>
+   <button id="resetBtn">🔄</button>
+  </div>
+ </div>
+
+ <div id="guide"></div>
+ <canvas id="world" width="360" height="520"></canvas>
+ <div class="hint">← → / A D / Space / Enter / R<br>
+ <!--シンカの線：🍒→🍓→🍇→🍊→🍎→🍐→🍑→🍍→🍈→🍉-->
+</div>
+
+<div id="over" class="over" style="display:none">
+  <div>GAME OVER</div>
+  <button id="restartBtn">RESTART</button>
+</div>
+
+</div>
+
+<script>
+let suikaCount = 0; // スイカ専用カウンター
+const suikaEl = document.getElementById("suikaCount");
+const {Engine,Render,Runner,Bodies,World,Events,Sleeping}=Matter;
+const SAVE_KEY="changesuika1";
+const FRUIT_KEY = "fruit_settings_v1";
+
+const canvas=document.getElementById("world");
+const wrap=document.getElementById("wrap");
+const guide=document.getElementById("guide");
+const scoreEl=document.getElementById("score");
+const highEl=document.getElementById("high");
+const currentEl=document.getElementById("current");
+const nextEl=document.getElementById("next");
+const overEl=document.getElementById("over");
+
+const engine=Engine.create();
+engine.gravity.y=1.05;
+
+Render.run(Render.create({
+ canvas,engine,
+ options:{width:360,height:520,wireframes:false,background:"#fef3c7"}
+}));
+Runner.run(Runner.create(),engine);
+
+/*const fruits=[
+ {e:"🍒",r:12,s:10,d:0.001},
+ {e:"🍓",r:16,s:20,d:0.0012},
+ {e:"🍇",r:20,s:40,d:0.0015},
+ {e:"🍊",r:24,s:80,d:0.0018},
+ {e:"🍎",r:28,s:160,d:0.0022},
+ {e:"🍐",r:32,s:320,d:0.0026},
+ {e:"🍑",r:36,s:640,d:0.003},
+ {e:"🍍",r:42,s:960,d:0.0032},
+ {e:"🍈",r:45,s:1280,d:0.0035},  
+ {e:"🍉",r:48,s:1640,d:0.004},
+];
+*/
+/* 🍎 本家サイズ比 */
+/*const fruits=[
+ {e:"🍒",r:14,s:10,d:0.001},
+ {e:"🍓",r:18,s:20,d:0.0012},
+ {e:"🍇",r:23,s:40,d:0.0015},
+ {e:"🍊",r:28,s:80,d:0.0018},
+ {e:"🍎",r:33,s:160,d:0.0022},
+ {e:"🍐",r:38,s:320,d:0.0026},
+ {e:"🍑",r:44,s:640,d:0.003},
+ {e:"🍍",r:50,s:960,d:0.0032},
+ {e:"🍈",r:56,s:1280,d:0.0035},
+ {e:"🍉",r:62,s:2048,d:0.004},
+]; */
+/* 🍎 本家サイズ比 */
+let fruits=[];
+
+let score=0,highScore=0;
+let current=0,next=0;
+let canDrop=true,gameOver=false;
+let overTimer=0;
+let guideX=180;
+function generateFruits(list){
+  fruits = list.map((e,i)=>({
+    e:e,
+    r:14 + i*4,
+    s:10 * Math.pow(2,i),
+    d:0.001 + i*0.0003
+  }));
+}
+document.getElementById("applyBtn").onclick = ()=>{
+  const inputs = editor.querySelectorAll("input");
+  const list = Array.from(inputs).map(i=>i.value || "🍏");
+
+  saveFruitSettings(list);      // ★保存
+  generateFruits(list);         // ★更新
+
+  // current / next を範囲内に調整（超重要）
+  current = Math.min(current, fruits.length - 1);
+  next = Math.floor(Math.random() * fruits.length);
+
+  updateUI();
+  save(); // ゲーム状態も保存
+};
+const editor = document.getElementById("fruitEditor");
+function loadFruitSettings(){
+  const data = JSON.parse(localStorage.getItem(FRUIT_KEY) || "null");
+  return data;
+}
+function buildEditor(count, savedList = null){
+  editor.innerHTML = "";
+
+  for(let i=0;i<count;i++){
+    const input = document.createElement("input");
+
+    if(savedList && savedList[i]){
+      input.value = savedList[i];
+    }else{
+      input.value = ["🍒","🍓","🍇","🍊","🍎","🍐","🍑","🍍","🍈","🍉"][i] || "🍏";
+    }
+
+    input.style.width = "40px";
+    editor.appendChild(input);
+  }
+}
+World.add(engine.world,[
+ Bodies.rectangle(180,540,360,40,{isStatic:true}),
+ Bodies.rectangle(-10,260,20,520,{isStatic:true}),
+ Bodies.rectangle(370,260,20,520,{isStatic:true}),
+]);
+function shake(){
+ wrap.style.transform += " translateX(4px)";
+ setTimeout(()=>wrap.style.transform = wrap.style.transform.replace(" translateX(4px)",""), 50);
+}
+function scale(){
+ const s=Math.min(window.innerWidth/380,window.innerHeight/640,1);
+ wrap.style.transform=`scale(${s})`;
+}
+window.addEventListener("resize",scale);
+scale();
+
+function rand(){return Math.floor(Math.random()*3);}
+
+function updateUI(){
+ scoreEl.textContent = score;
+ highEl.textContent = highScore;
+ currentEl.textContent = fruits[current].e;
+ nextEl.textContent = fruits[next].e;
+ guide.style.left = guideX+"px";
+ suikaEl.textContent = suikaCount; // スイカカウンター反映
+}
+
+function emojiTex(e,s){
+ const c=document.createElement("canvas");
+ c.width=c.height=s*2;
+ const ctx=c.getContext("2d");
+ ctx.font=`${s}px serif`;
+ ctx.textAlign="center";
+ ctx.textBaseline="middle";
+ ctx.fillText(e,s,s);
+ return c.toDataURL();
+}
+
+function createFruit(x,t,y=40){
+ const f=fruits[t];
+ const b=Bodies.circle(x,y,f.r,{
+  density:f.d,restitution:0.05,friction:0.2,
+  render:{sprite:{texture:emojiTex(f.e,f.r*2)}}
+ });
+ b.fruitType=t;
+ b.isMerging=false;
+ Sleeping.set(b,false);
+ return b;
+}
+
+function drop(){
+ if(!canDrop||gameOver) return;
+ World.add(engine.world,createFruit(guideX,current));
+ current=next;
+ next=rand();
+ updateUI();
+ canDrop=false;
+ setTimeout(()=>canDrop=true,450);
+ save();
+   // shake();
+}
+function flashScore(){
+ scoreEl.style.transform="scale(1.3)";
+ scoreEl.style.color="#facc15";
+
+ setTimeout(()=>{
+  scoreEl.style.transform="";
+  scoreEl.style.color="";
+ },150);
+}
+function fullReset(){
+ engine.world.bodies
+  .filter(b=>b.fruitType!==undefined)
+  .forEach(b=>World.remove(engine.world,b));
+
+ score=0;
+ gameOver=false;
+ overTimer=0;
+ guide.style.display="block";
+ overEl.style.display="none";
+
+ current=rand();
+ next=rand();
+ updateUI();
+    suikaCount=0;
+
+ localStorage.removeItem(SAVE_KEY);
+}
+
+function save(){
+ const data=engine.world.bodies
+  .filter(b=>b.fruitType!==undefined)
+  .map(b=>({x:b.position.x,y:b.position.y,t:b.fruitType}));
+ localStorage.setItem(SAVE_KEY, JSON.stringify({
+  score, highScore, current, next, gameOver, suikaCount, data
+}));
+}
+
+function load(){
+ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||"null");
+ if(!d){current=rand();next=rand();updateUI();return;}
+ score=d.score||0;
+suikaCount = d.suikaCount || 0;
+ highScore=d.highScore||0;
+ current=d.current??rand();
+ next=d.next??rand();
+ updateUI();
+ d.data?.forEach(f=>World.add(engine.world,createFruit(f.x,f.t,f.y)));
+}
+
+canvas.addEventListener("pointermove",e=>{
+/* ===== 正しいタッチ操作 ===== */
+let touching = false;
+let startInside = false;
+
+canvas.addEventListener("touchstart", e=>{
+  if(gameOver) return;
+
+  const r = canvas.getBoundingClientRect();
+  const x = e.touches[0].clientX;
+  const y = e.touches[0].clientY;
+
+  // キャンバス内で触ったか判定
+  startInside =
+    x >= r.left && x <= r.right &&
+    y >= r.top  && y <= r.bottom;
+
+  if(!startInside) return;
+
+  touching = true;
+
+  const cx = x - r.left;
+  guideX = Math.max(20, Math.min(340, cx));
+  updateUI();
+
+  e.preventDefault();
+}, {passive:false});
+
+canvas.addEventListener("touchmove", e=>{
+  if(!touching) return;
+
+  const r = canvas.getBoundingClientRect();
+  const x = e.touches[0].clientX - r.left;
+  guideX = Math.max(20, Math.min(340, x));
+  updateUI();
+
+  e.preventDefault();
+}, {passive:false});
+
+canvas.addEventListener("touchend", e=>{
+  if(!touching || !startInside) return;
+
+  touching = false;
+  startInside = false;
+
+  drop(); // ここでだけ落ちる
+}, {passive:false});
+
+
+
+ if(gameOver) return;
+ const r=canvas.getBoundingClientRect();
+ guideX=Math.max(20,Math.min(340,e.clientX-r.left));
+ updateUI();
+});
+//canvas.addEventListener("pointerdown",drop);
+
+
+
+document.addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft"||e.key==="a") guideX=Math.max(20,guideX-10);
+ if(e.key==="ArrowRight"||e.key==="d") guideX=Math.min(340,guideX+10);
+
+ if(e.key===" "||e.key==="Enter"){
+   e.preventDefault();
+   drop();
+ }
+
+ if(e.key==="r") fullReset();
+ updateUI();
+    //suikaCount=0;
+});
+
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'l') {
+    alert("流石ですね");
+    score += 40000;
+    highScore += 40000;
+    if (highScore >= score){
+        score = highScore;
+        }
+      if (highScore <= score){
+          score = highScore;
+          }
+  }
+});
+
+
+Events.on(engine,"collisionStart",e=>{
+ e.pairs.forEach(p=>{
+  const a=p.bodyA, b=p.bodyB;
+
+  if(a.fruitType===b.fruitType && !a.isMerging && !b.isMerging){
+   a.isMerging = b.isMerging = true;
+   const t = a.fruitType;
+
+   if(t === fruits.length - 1){ // スイカの場合
+  suikaCount++; // カウンター増加
+  updateUI(); // UI反映
+  setTimeout(()=>{
+    World.remove(engine.world,[a,b]); // 消す
+    save();
+  }, 80);
+  return;
+}
+
+   // 通常のマージ処理
+   score += fruits[t].s;
+   highScore = Math.max(highScore, score);
+   updateUI();
+　　flashScore();
+   const x = (a.position.x + b.position.x)/2;
+   const y = (a.position.y + b.position.y)/2;
+   setTimeout(()=>{
+     World.remove(engine.world,[a,b]);
+     World.add(engine.world,createFruit(x,t+1,y));
+     save();
+   },80);
+  }
+ });
+});
+
+Events.on(engine,"beforeUpdate",()=>{
+ if(gameOver) return;
+
+ const isDanger = engine.world.bodies.some(b=>{
+   if(b.fruitType===undefined) return false;
+
+   // 生成直後は無視（まだ上にあるため）
+   if(b.position.y < 197) return false;
+
+   const top = b.position.y - b.circleRadius;
+   return top < 130;
+ });
+
+ if(isDanger){
+   gameOver = true;
+   guide.style.display="none";
+   overEl.style.display="flex";
+   save();
+ }
+});
+document.getElementById("fruitCount").addEventListener("change", e=>{
+  const count = Number(e.target.value);
+  buildEditor(count);
+});
+function saveFruitSettings(list){
+  localStorage.setItem(FRUIT_KEY, JSON.stringify(list));
+}
+document.getElementById("restartBtn").onclick = ()=>{
+  fullReset();
+};
+
+
+document.getElementById("resetBtn").onclick=fullReset;
+const saved = loadFruitSettings();
+
+if(saved){
+  buildEditor(saved.length, saved);
+  generateFruits(saved);
+}else{
+  buildEditor(10);
+  generateFruits(["🍒","🍓","🍇","🍊","🍎","🍐","🍑","🍍","🍈","🍉"]);
+}
+
+load();
+</script>
+</body>
+</html>
